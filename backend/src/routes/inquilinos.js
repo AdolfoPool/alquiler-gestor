@@ -3,62 +3,57 @@ const router = express.Router();
 const Inquilino = require('../models/Inquilino');
 const Habitacion = require('../models/Habitacion');
 
-// REGISTRAR UN NUEVO INQUILINO Y OCUPAR LA HABITACIÓN
+// REGISTRAR INQUILINO Y ASIGNARLO A LA HABITACIÓN
 router.post('/', async (req, res) => {
-  const { dni, nombreCompleto, celular, idHabitacion } = req.body;
+  const { dni, nombreCompleto, celular, idHabitacion, fechaIngreso, diaPago } = req.body;
 
   try {
-    // 1. Buscamos si la habitación existe y está disponible
+    // 1. Buscamos o creamos el perfil único del Inquilino por su DNI
+    const [inquilino] = await Inquilino.findOrCreate({
+      where: { dni },
+      defaults: { nombreCompleto, celular }
+    });
+
+    // Si el inquilino ya existía pero cambió de celular, lo actualizamos
+    if (celular) {
+      inquilino.celular = celular;
+      await inquilino.save();
+    }
+
+    // 2. Buscamos la habitación y le asignamos este perfil junto con las fechas de pago
     const habitacion = await Habitacion.findByPk(idHabitacion);
     if (!habitacion) {
-      return res.status(404).json({ mensaje: 'La habitación no existe' });
+      return res.status(404).json({ mensaje: 'Habitación no encontrada' });
     }
 
-    if (habitacion.estado === 'Ocupado') {
-      return res.status(400).json({ mensaje: 'Esta habitación ya está ocupada' });
-    }
-
-    // 2. Creamos el registro del inquilino en SQLite
-    const nuevoInquilino = await Inquilino.create({
-      dni,
-      nombreCompleto,
-      celular,
-      idHabitacion
-    });
-
-    // 3. ¡LA CLAVE! Actualizamos el estado de la habitación a 'Ocupado'
     habitacion.estado = 'Ocupado';
+    habitacion.InquilinoDni = inquilino.dni; // Vinculamos el perfil actual
+    habitacion.fechaIngreso = fechaIngreso;   // Tu Plus: Fecha en que entró
+    habitacion.diaPago = parseInt(diaPago);   // Tu Plus: Qué día del mes paga
     await habitacion.save();
 
-    res.status(201).json({
-      mensaje: 'Inquilino registrado con éxito y habitación ocupada',
-      inquilino: nuevoInquilino
-    });
-
+    res.status(200).json({ mensaje: 'Inquilino asignado y cuarto ocupado', habitacion });
   } catch (error) {
-    console.error('Error al registrar inquilino:', error);
-    res.status(500).json({ mensaje: 'Error interno en el servidor' });
+    console.error(error);
+    res.status(500).json({ mensaje: 'Error al registrar inquilino' });
   }
 });
 
-// RUTA PARA RETIRAR UN INQUILINO Y LIBERAR LA HABITACIÓN
+// DESALOJAR INQUILINO (Liberar habitación manteniendo el perfil vivo)
 router.delete('/habitacion/:idHabitacion', async (req, res) => {
-  const { idHabitacion } = req.params;
   try {
-    // 1. Borramos al inquilino asociado a esa habitación
-    await Inquilino.destroy({ where: { idHabitacion } });
-
-    // 2. Buscamos la habitación para cambiarle el estado a Disponible
-    const habitacion = await Habitacion.findByPk(idHabitacion);
+    const habitacion = await Habitacion.findByPk(req.params.idHabitacion);
     if (habitacion) {
       habitacion.estado = 'Disponible';
+      habitacion.InquilinoDni = null; // Rompemos el vínculo actual (pero el perfil de Inquilino queda intacto en su tabla)
+      habitacion.fechaIngreso = null;
+      habitacion.diaPago = null;
       await habitacion.save();
     }
-
-    res.json({ mensaje: 'Inquilino retirado y habitación liberada con éxito' });
+    res.json({ mensaje: 'Habitación liberada con éxito' });
   } catch (error) {
-    console.error('Error al retirar inquilino:', error);
-    res.status(500).json({ mensaje: 'Error interno del servidor' });
+    console.error(error);
+    res.status(500).json({ mensaje: 'Error al liberar habitación' });
   }
 });
 

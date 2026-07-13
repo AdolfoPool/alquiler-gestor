@@ -1,15 +1,9 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/db');
-const Habitacion = require('./Habitacion');
 
 const Pago = sequelize.define('Pago', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
   mesPagado: {
-    type: DataTypes.STRING, // Ej: "Enero 2026"
+    type: DataTypes.STRING, // Ej: "Julio 2026"
     allowNull: false
   },
   monto: {
@@ -18,18 +12,20 @@ const Pago = sequelize.define('Pago', {
   },
   impuestoSunat: {
     type: DataTypes.FLOAT,
-    allowNull: false // Aquí guardaremos el 5% calculado
+    allowNull: false
   },
   inquilinoNombre: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false // Guarda el nombre del perfil textualmente en el recibo
+  },
+  inquilinoDni: {
+    type: DataTypes.STRING,
+    allowNull: false // Guarda el DNI para enlazar al perfil histórico
+  },
+  notaInterna: {
+    type: DataTypes.TEXT,
+    allowNull: true // Tu Plus: Bitácora secreta para tus papás
   }
-}, {
-  timestamps: true
 });
-
-// Relación: Un pago corresponde a una habitación
-Pago.belongsTo(Habitacion, { foreignKey: 'idHabitacion', onDelete: 'CASCADE' });
-Habitacion.hasMany(Pago, { foreignKey: 'idHabitacion' });
 
 module.exports = Pago;

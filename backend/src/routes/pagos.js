@@ -3,9 +3,9 @@ const router = express.Router();
 const Pago = require('../models/Pago');
 const Habitacion = require('../models/Habitacion');
 
-// 1. REGISTRAR UN NUEVO PAGO (Guardando el nombre del inquilino)
+// REGISTRAR UN NUEVO PAGO WITH TU PLUS
 router.post('/', async (req, res) => {
-  const { mesPagado, monto, idHabitacion, inquilinoNombre } = req.body;
+  const { mesPagado, monto, idHabitacion, inquilinoNombre, inquilinoDni, notaInterna } = req.body;
 
   try {
     const impuestoSunat = monto * 0.05;
@@ -15,31 +15,33 @@ router.post('/', async (req, res) => {
       monto,
       impuestoSunat,
       idHabitacion,
-      inquilinoNombre // Se queda grabado para siempre
+      inquilinoNombre, // Inmortal en texto
+      inquilinoDni,    // Enlazado al perfil histórico
+      notaInterna      // Tu Plus: Bitácora oculta
     });
 
     res.status(201).json({ mensaje: 'Pago registrado', pago: nuevoPago });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ mensaje: 'Error al procesar el pago' });
+    res.status(500).json({ mensaje: 'Error al registrar el pago' });
   }
 });
 
-// 2. NUEVO: OBTENER TODOS LOS PAGOS DE TODAS LAS HABITACIONES (Para el Historial Global)
+// OBTENER TODOS LOS PAGOS (Para el historial global)
 router.get('/', async (req, res) => {
   try {
-    const todosLosPagos = await Pago.findAll({
-      include: [{ model: Habitacion, attributes: ['numero'] }], // Para saber qué número de cuarto fue
+    const pagos = await Pago.findAll({
+      include: [{ model: Habitacion, attributes: ['numero'] }],
       order: [['createdAt', 'DESC']]
     });
-    res.json(todosLosPagos);
+    res.json(pagos);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ mensaje: 'Error al obtener el historial global' });
+    res.status(500).json({ mensaje: 'Error' });
   }
 });
 
-// 3. OBTENER PAGOS DE UNA HABITACIÓN ESPECÍFICA
+// OBTENER PAGOS DE UN CUARTO ESPECÍFICO
 router.get('/:idHabitacion', async (req, res) => {
   try {
     const pagos = await Pago.findAll({
@@ -49,7 +51,7 @@ router.get('/:idHabitacion', async (req, res) => {
     res.json(pagos);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ mensaje: 'Error al obtener historial' });
+    res.status(500).json({ mensaje: 'Error' });
   }
 });
 

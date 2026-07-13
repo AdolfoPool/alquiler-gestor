@@ -1,31 +1,21 @@
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-const Habitacion = require('./Habitacion');
+const sequelize = require('../config/db'); // Asegúrate de que esta ruta apunte a tu config de BD
 
 const Inquilino = sequelize.define('Inquilino', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
   dni: {
     type: DataTypes.STRING,
+    primaryKey: true,
     allowNull: false,
-    unique: true // Un DNI único por persona
+    unique: true
   },
   nombreCompleto: {
     type: DataTypes.STRING,
     allowNull: false
   },
   celular: {
-    type: DataTypes.STRING
+    type: DataTypes.STRING,
+    allowNull: true
   }
-}, {
-  timestamps: true
 });
-
-// Relación: Un inquilino pertenece a una habitación
-Inquilino.belongsTo(Habitacion, { foreignKey: 'idHabitacion', onDelete: 'SET NULL' });
-Habitacion.hasOne(Inquilino, { foreignKey: 'idHabitacion' });
 
 module.exports = Inquilino;
