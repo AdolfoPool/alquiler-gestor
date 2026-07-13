@@ -19,6 +19,10 @@ const Pago = sequelize.define('Pago', {
   impuestoSunat: {
     type: DataTypes.FLOAT,
     allowNull: false // Aquí guardaremos el 5% calculado
+  },
+  inquilinoNombre: {
+    type: DataTypes.STRING,
+    allowNull: false
   }
 }, {
   timestamps: true

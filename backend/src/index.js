@@ -32,16 +32,11 @@ const Pago = require('./models/Pago');
 // ... Tus middlewares (cors, express.json) y rutas
 
 // Reemplaza tu app.listen básico por esta sincronización:
-sequelize.sync({ force: false }) // force: false evita que se borren tus datos cada vez que reinicias
+sequelize.sync({ alter: true })
   .then(() => {
-    console.log('¡Base de datos SQLite sincronizada correctamente! 🗄️');
-    app.listen(PORT, () => {
-      console.log(`Servidor escuchando en el puerto ${PORT}`);
-    });
+    console.log('¡Base de datos actualizada con las nuevas columnas! 🚀');
   })
-  .catch(err => {
-    console.error('Error al sincronizar la base de datos:', err);
-  });
+  .catch(err => console.log('Error al sincronizar:', err));
 
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);

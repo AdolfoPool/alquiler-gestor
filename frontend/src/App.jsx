@@ -2,17 +2,25 @@ import React, { useState, useEffect } from 'react'
 
 function App() {
   const [habitaciones, setHabitaciones] = useState([])
+  const [todosLosPagos, setTodosLosPagos] = useState([]) // Historial global
   const [cargando, setCargando] = useState(true)
+  const [vistaActual, setVistaActual] = useState('cuartos') // 'cuartos' o 'historial'
   
-  // MODAL 1: Registrar Inquilino
+  // Filtros para el historial global
+  const [filtroCuarto, setFiltroCuarto] = useState('')
+  const [filtroMes, setFiltroMes] = useState('')
+
+  // MODALES
   const [modalInquilinoAbierto, setModalInquilinoAbierto] = useState(false)
+  const [modalPagosAbierto, setModalPagosAbierto] = useState(false)
   const [cuartoSeleccionado, setCuartoSeleccionado] = useState(null)
+
+  // Form Inquilino
   const [dni, setDni] = useState('')
   const [nombreCompleto, setNombreCompleto] = useState('')
   const [celular, setCelular] = useState('')
 
-  // MODAL 2: Ver Pagos / Recibo
-  const [modalPagosAbierto, setModalPagosAbierto] = useState(false)
+  // Form Pagos
   const [historialPagos, setHistorialPagos] = useState([])
   const [mesPagado, setMesPagado] = useState('')
   const [montoPago, setMontoPago] = useState('')
@@ -25,268 +33,290 @@ function App() {
         setHabitaciones(data)
         setCargando(false)
       })
-      .catch(err => {
-        console.error("Error al conectar con el backend:", err)
-        setCargando(false)
-      })
+      .catch(err => { console.error(err); setCargando(false); })
+  }
+
+  const cargarTodosLosPagos = () => {
+    fetch('http://localhost:5000/api/pagos')
+      .then(res => res.json())
+      .then(data => setTodosLosPagos(data))
+      .catch(err => console.error(err))
   }
 
   useEffect(() => {
     cargarHabitaciones()
+    cargarTodosLosPagos()
   }, [])
 
-  // Acciones de Inquilino
-  const abrirRegistroInquilino = (habitacion) => {
-    setCuartoSeleccionado(habitacion)
-    setDni('')
-    setNombreCompleto('')
-    setCelular('')
-    setModalInquilinoAbierto(true)
-  }
-
+  // Guardar Inquilino
   const handleGuardarInquilino = (e) => {
     e.preventDefault()
-    const nuevoInquilino = {
-      dni,
-      nombreCompleto,
-      celular,
-      idHabitacion: cuartoSeleccionado.id
-    }
-
     fetch('http://localhost:5000/api/inquilinos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(nuevoInquilino)
+      body: JSON.stringify({ dni, nombreCompleto, celular, idHabitacion: cuartoSeleccionado.id })
     })
     .then(res => {
       if (res.ok) {
         alert('¡Inquilino registrado con éxito! 🎉')
         setModalInquilinoAbierto(false)
         cargarHabitaciones()
-      } else {
-        alert('Error al registrar inquilino.')
       }
     })
-    .catch(err => console.error(err))
   }
 
-  // Acciones de Pagos
-  const abrirModalPagos = (habitacion) => {
-    setCuartoSeleccionado(habitacion)
-    setMesPagado('')
-    setMontoPago(habitacion.precioMensual) // Autorellena el precio pactado del cuarto
-    setHistorialPagos([])
-    
-    // Traemos los pagos que tiene guardados este cuarto
-    fetch(`http://localhost:5000/api/pagos/${habitacion.id}`)
-      .then(res => res.json())
-      .then(pagos => setHistorialPagos(pagos))
-      .catch(err => console.error("Error al traer pagos:", err))
-
-    setModalPagosAbierto(true)
-  }
-
-const handleGuardarPago = (e) => {
+  // Guardar Pago
+  const handleGuardarPago = (e) => {
     e.preventDefault()
-    const nuevoPago = {
-      mesPagado,
-      monto: parseFloat(montoPago),
-      idHabitacion: cuartoSeleccionado.id
-    }
-
+    const nombreInquilinoActual = cuartoSeleccionado?.Inquilino?.nombreCompleto || 'Inquilino Histórico'
+    
     fetch('http://localhost:5000/api/pagos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(nuevoPago)
+      body: JSON.stringify({
+        mesPagado,
+        monto: parseFloat(montoPago),
+        idHabitacion: cuartoSeleccionado.id,
+        inquilinoNombre: nombreInquilinoActual // Se pasa el nombre explícito
+      })
     })
     .then(res => {
       if (res.ok) {
-        alert('¡Recibo de pago guardado correctamente! 💰')
-        // Recargamos el historial del modal inmediatamente
+        alert('¡Recibo de pago guardado! 💰')
+        cargarTodosLosPagos() // Actualiza el reporte global
         return fetch(`http://localhost:5000/api/pagos/${cuartoSeleccionado.id}`)
-      } else {
-        alert('Error al procesar el pago')
       }
     })
     .then(res => res?.json())
-    .then(pagosActualizados => { // <-- ¡Listo! Juntito y sin espacios para que no chille
-      if (pagosActualizados) setHistorialPagos(pagosActualizados)
-    })
-    .catch(err => console.error(err))
+    .then(pagos => { if(pagos) setHistorialPagos(pagos) })
   }
 
+  // Retirar Inquilino
   const handleRetirarInquilino = (idHabitacion, numeroCuarto) => {
-    const confirmar = window.confirm(`¿Estás seguro de que deseas retirar al inquilino del Cuarto ${numeroCuarto}? Esto liberará la habitación.`);
-    if (!confirmar) return;
-
-    fetch(`http://localhost:5000/api/inquilinos/habitacion/${idHabitacion}`, {
-      method: 'DELETE'
-    })
+    if (!window.confirm(`¿Retirar inquilino del Cuarto ${numeroCuarto}? Esto liberará el cuarto sin borrar los recibos de pago.`)) return
+    fetch(`http://localhost:5000/api/inquilinos/habitacion/${idHabitacion}`, { method: 'DELETE' })
     .then(res => {
-      if (res.ok) {
-        alert('¡Habitación liberada correctamente! 🧼');
-        cargarHabitaciones(); // Recargamos la interfaz
-      } else {
-        alert('Error al intentar retirar al inquilino.');
-      }
+      if (res.ok) { alert('¡Habitación liberada! 🧼'); cargarHabitaciones(); }
     })
-    .catch(err => console.error("Error:", err));
   }
 
-  // Tarjeta reutilizable para pintar los cuartos
-  const renderCard = (habitacion) => {
-    const esOcupado = habitacion.estado === 'Ocupado'
-    return (
-      <div key={habitacion.id} className={`p-5 rounded-2xl shadow-sm border bg-white ${esOcupado ? 'border-l-8 border-l-red-500' : 'border-l-8 border-l-emerald-500'}`}>
-        <div className="flex justify-between items-start">
-          <div>
-            <h3 className="text-xl font-bold text-slate-800">Cuarto {habitacion.numero}</h3>
-            <p className="text-sm text-slate-500 font-medium mt-1">Precio: S/ {habitacion.precioMensual}</p>
-          </div>
-          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${esOcupado ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-            {habitacion.estado}
-          </span>
-        </div>
-        <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2">
-          {esOcupado ? (
-            <>
-              <button onClick={() => handleRetirarInquilino(habitacion.id, habitacion.numero)} className="text-sm font-bold px-3 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
-                Retirar Inquilino
-              </button>
-              <button onClick={() => abrirModalPagos(habitacion)} className="text-sm font-bold px-4 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
-                Ver Pago / Recibo
-              </button>
-            </>
-          ) : (
-            <button onClick={() => abrirRegistroInquilino(habitacion)} className="text-sm font-bold px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
-              Registrar Inquilino
-            </button>
-          )}
-        </div>
-      </div>
-    )
+  const abrirModalPagos = (habitacion) => {
+    setCuartoSeleccionado(habitacion)
+    setMesPagado('')
+    setMontoPago(habitacion.precioMensual)
+    setHistorialPagos([])
+    fetch(`http://localhost:5000/api/pagos/${habitacion.id}`)
+      .then(res => res.json())
+      .then(pagos => setHistorialPagos(pagos))
+    setModalPagosAbierto(true)
   }
+
+  // Lógica de Filtros del Historial Global
+  const pagosFiltrados = todosLosPagos.filter(pago => {
+    const coincideCuarto = filtroCuarto === '' || pago.Habitacion?.numero === filtroCuarto
+    const coincideMes = filtroMes === '' || pago.mesPagado.toLowerCase().includes(filtroMes.toLowerCase())
+    return coincideCuarto && coincideMes
+  })
+
+  const totalIngresos = pagosFiltrados.reduce((sum, p) => sum + p.monto, 0)
+  const totalSunat = pagosFiltrados.reduce((sum, p) => sum + p.impuestoSunat, 0)
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 font-sans text-slate-800">
-      <header className="mb-6 rounded-2xl bg-blue-600 p-5 text-white shadow-md">
-        <h1 className="text-xl font-bold">AlquilerGestor 🏠</h1>
-        <p className="text-sm opacity-90">Panel de Control para Papás</p>
+      <header className="mb-6 rounded-2xl bg-blue-600 p-5 text-white shadow-md flex justify-between items-center flex-wrap gap-4">
+        <div>
+          <h1 className="text-xl font-bold">AlquilerGestor 🏠</h1>
+          <p className="text-sm opacity-90">Panel de Control para Papás</p>
+        </div>
+        {/* Pestañas de Navegación */}
+        <div className="bg-blue-700/50 p-1.5 rounded-xl flex gap-2">
+          <button onClick={() => setVistaActual('cuartos')} className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${vistaActual === 'cuartos' ? 'bg-white text-blue-700 shadow-sm' : 'text-white hover:bg-blue-600/30'}`}>
+            Estado de Cuartos
+          </button>
+          <button onClick={() => setVistaActual('historial')} className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${vistaActual === 'historial' ? 'bg-white text-blue-700 shadow-sm' : 'text-white hover:bg-blue-600/30'}`}>
+            Historial de Pagos 📊
+          </button>
+        </div>
       </header>
 
-      <main className="space-y-8">
-        {cargando ? (
-          <p className="text-center text-slate-500 mt-10 animate-pulse">Cargando habitaciones...</p>
-        ) : (
-          <>
-            <div>
-              <h2 className="text-lg font-extrabold mb-3 text-slate-700 flex items-center gap-2">
-                <span className="bg-blue-100 text-blue-700 w-7 h-7 rounded-lg flex items-center justify-center text-xs">1º</span>
-                Primer Piso
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {habitaciones.filter(h => h.piso === 1).map(renderCard)}
-              </div>
+      {cargando ? (
+        <p className="text-center text-slate-500 mt-10 animate-pulse">Cargando datos...</p>
+      ) : vistaActual === 'cuartos' ? (
+        /* VISTA 1: CONTROL DE HABITACIONES */
+        <main className="space-y-8">
+          {/* Primer Piso */}
+          <div>
+            <h2 className="text-sm font-extrabold mb-3 text-slate-500 uppercase tracking-wider flex items-center gap-2">Primer Piso</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {habitaciones.filter(h => h.piso === 1).map(h => (
+                <div key={h.id} className={`p-5 rounded-2xl border bg-white flex flex-col justify-between shadow-xs ${h.estado === 'Ocupado' ? 'border-l-8 border-l-red-500' : 'border-l-8 border-l-emerald-500'}`}>
+                  <div className="flex justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold">Cuarto {h.numero}</h3>
+                      <p className="text-xs text-slate-500">Precio: S/ {h.precioMensual}</p>
+                    </div>
+                    <span className={`text-[10px] px-2.5 py-1 font-bold rounded-full h-fit ${h.estado === 'Ocupado' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{h.estado}</span>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2">
+                    {h.estado === 'Ocupado' ? (
+                      <>
+                        <button onClick={() => handleRetirarInquilino(h.id, h.numero)} className="text-xs font-bold px-3 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100">Retirar</button>
+                        <button onClick={() => abrirModalPagos(h)} className="text-xs font-bold px-4 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200">Ver Pago / Recibo</button>
+                      </>
+                    ) : (
+                      <button onClick={() => { setCuartoSeleccionado(h); setDni(''); setNombreCompleto(''); setCelular(''); setModalInquilinoAbierto(true); }} className="text-xs font-bold px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">Registrar Inquilino</button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
+          </div>
 
-            <div>
-              <h2 className="text-lg font-extrabold mb-3 text-slate-700 flex items-center gap-2">
-                <span className="bg-blue-100 text-blue-700 w-7 h-7 rounded-lg flex items-center justify-center text-xs">2º</span>
-                Segundo Piso
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {habitaciones.filter(h => h.piso === 2).map(renderCard)}
-              </div>
+          {/* Segundo Piso */}
+          <div>
+            <h2 className="text-sm font-extrabold mb-3 text-slate-500 uppercase tracking-wider flex items-center gap-2">Segundo Piso</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {habitaciones.filter(h => h.piso === 2).map(h => (
+                <div key={h.id} className={`p-5 rounded-2xl border bg-white flex flex-col justify-between shadow-xs ${h.estado === 'Ocupado' ? 'border-l-8 border-l-red-500' : 'border-l-8 border-l-emerald-500'}`}>
+                  <div className="flex justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold">Cuarto {h.numero}</h3>
+                      <p className="text-xs text-slate-500">Precio: S/ {h.precioMensual}</p>
+                    </div>
+                    <span className={`text-[10px] px-2.5 py-1 font-bold rounded-full h-fit ${h.estado === 'Ocupado' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{h.estado}</span>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2">
+                    {h.estado === 'Ocupado' ? (
+                      <>
+                        <button onClick={() => handleRetirarInquilino(h.id, h.numero)} className="text-xs font-bold px-3 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100">Retirar</button>
+                        <button onClick={() => abrirModalPagos(h)} className="text-xs font-bold px-4 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200">Ver Pago / Recibo</button>
+                      </>
+                    ) : (
+                      <button onClick={() => { setCuartoSeleccionado(h); setDni(''); setNombreCompleto(''); setCelular(''); setModalInquilinoAbierto(true); }} className="text-xs font-bold px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">Registrar Inquilino</button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-          </>
-        )}
-      </main>
+          </div>
+        </main>
+      ) : (
+        /* VISTA 2: HISTORIAL GENERAL DE PAGOS */
+        <main className="space-y-6">
+          {/* Tarjetas de Métricas Acumuladas */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-white p-5 rounded-2xl shadow-xs border-t-4 border-t-blue-500">
+              <p className="text-xs font-bold text-slate-400 uppercase">Total Ingresos Filtrados</p>
+              <p className="text-2xl font-black text-slate-800 mt-1">S/ {totalIngresos.toFixed(2)}</p>
+            </div>
+            <div className="bg-white p-5 rounded-2xl shadow-xs border-t-4 border-t-red-400">
+              <p className="text-xs font-bold text-slate-400 uppercase">Impuesto SUNAT Acumulado (5%)</p>
+              <p className="text-2xl font-black text-red-600 mt-1">S/ {totalSunat.toFixed(2)}</p>
+            </div>
+          </div>
+
+          {/* Filtros */}
+          <div className="bg-white p-4 rounded-2xl shadow-xs flex flex-wrap gap-4 items-center">
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filtrar por Cuarto</label>
+              <select value={filtroCuarto} onChange={e => setFiltroCuarto(e.target.value)} className="w-full p-2 text-sm bg-slate-50 border border-slate-200 rounded-lg">
+                <option value="">Todos los cuartos</option>
+                {habitaciones.map(h => <option key={h.id} value={h.numero}>Cuarto {h.numero}</option>)}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Buscar por Mes / Texto</label>
+              <input type="text" placeholder="Ej. Julio" value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className="w-full p-2 text-sm bg-slate-50 border border-slate-200 rounded-lg" />
+            </div>
+          </div>
+
+          {/* Tabla de Resultados */}
+          <div className="bg-white rounded-2xl shadow-xs overflow-hidden border">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-600">
+                <thead className="bg-slate-50 text-[10px] text-slate-400 uppercase font-bold border-b">
+                  <tr>
+                    <th className="p-4">Cuarto</th>
+                    <th className="p-4">Inquilino</th>
+                    <th className="p-4">Mes Pagado</th>
+                    <th className="p-4 text-right">Monto</th>
+                    <th className="p-4 text-right">Impuesto SUNAT</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {pagosFiltrados.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="p-8 text-center text-slate-400">No se encontraron registros históricos con esos filtros.</td>
+                    </tr>
+                  ) : (
+                    pagosFiltrados.map(pago => (
+                      <tr key={pago.id} className="hover:bg-slate-50/50">
+                        <td className="p-4 font-bold text-slate-800">Cuarto {pago.Habitacion?.numero || 'Baja'}</td>
+                        <td className="p-4 font-medium">{pago.inquilinoNombre}</td>
+                        <td className="p-4 text-slate-500">{pago.mesPagado}</td>
+                        <td className="p-4 text-right font-bold text-slate-700">S/ {pago.monto.toFixed(2)}</td>
+                        <td className="p-4 text-right font-bold text-red-600 bg-red-50/30">S/ {pago.impuestoSunat.toFixed(2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </main>
+      )}
 
       {/* MODAL 1: REGISTRAR INQUILINO */}
       {modalInquilinoAbierto && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
-          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-slate-800">Registrar en Cuarto {cuartoSeleccionado?.numero}</h3>
-              <button onClick={() => setModalInquilinoAbierto(false)} className="text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
-            </div>
-            <form onSubmit={handleGuardarInquilino} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">DNI</label>
-                <input type="text" required placeholder="Ej. 71234567" value={dni} onChange={(e) => setDni(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Nombre Completo</label>
-                <input type="text" required placeholder="Ej. Juan Pérez" value={nombreCompleto} onChange={(e) => setNombreCompleto(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Celular</label>
-                <input type="tel" placeholder="Ej. 987654321" value={celular} onChange={(e) => setCelular(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50" />
-              </div>
-              <div className="pt-2 flex space-x-3">
-                <button type="button" onClick={() => setModalInquilinoAbierto(false)} className="w-1/2 py-3 rounded-xl bg-slate-100 font-bold text-slate-600">Cancelar</button>
-                <button type="submit" className="w-1/2 py-3 rounded-xl bg-emerald-600 font-bold text-white shadow-md">Guardar</button>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl">
+            <h3 className="text-base font-bold mb-4">Registrar en Cuarto {cuartoSeleccionado?.numero}</h3>
+            <form onSubmit={handleGuardarInquilino} className="space-y-3">
+              <input type="text" required placeholder="DNI" value={dni} onChange={e => setDni(e.target.value)} className="w-full p-2.5 text-sm rounded-xl border bg-slate-50" />
+              <input type="text" required placeholder="Nombre Completo" value={nombreCompleto} onChange={e => setNombreCompleto(e.target.value)} className="w-full p-2.5 text-sm rounded-xl border bg-slate-50" />
+              <input type="tel" placeholder="Celular" value={celular} onChange={e => setCelular(e.target.value)} className="w-full p-2.5 text-sm rounded-xl border bg-slate-50" />
+              <div className="pt-2 flex gap-2">
+                <button type="button" onClick={() => setModalInquilinoAbierto(false)} className="w-1/2 py-2 text-sm bg-slate-100 rounded-xl font-bold">Cancelar</button>
+                <button type="submit" className="w-1/2 py-2 text-sm bg-emerald-600 text-white rounded-xl font-bold">Guardar</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL 2: VER PAGO / RECIBO (NUEVO) */}
+      {/* MODAL 2: VER PAGO DE LA HABITACIÓN */}
       {modalPagosAbierto && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
-          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4 border-b pb-3">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4 border-b pb-2">
               <div>
-                <h3 className="text-lg font-bold text-slate-800">Recibos - Cuarto {cuartoSeleccionado?.numero}</h3>
-                <p className="text-xs text-blue-600 font-semibold mt-0.5">
-                  Inquilino: {cuartoSeleccionado?.Inquilino ? cuartoSeleccionado.Inquilino.nombreCompleto : 'Cargando...'}
-                </p>
+                <h3 className="font-bold text-slate-800">Recibos - Cuarto {cuartoSeleccionado?.numero}</h3>
+                <p className="text-xs text-blue-600 font-bold mt-0.5">Inquilino: {cuartoSeleccionado?.Inquilino?.nombreCompleto || 'Cargando...'}</p>
               </div>
-              <button onClick={() => setModalPagosAbierto(false)} className="text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
+              <button onClick={() => setModalPagosAbierto(false)} className="text-xl font-bold text-slate-400 hover:text-slate-600">&times;</button>
             </div>
-
-            {/* Formulario de Nuevo Pago */}
-            <form onSubmit={handleGuardarPago} className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6 space-y-3">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Registrar Nuevo Mes</h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Mes a Pagar</label>
-                  <input type="text" required placeholder="Ej. Julio 2026" value={mesPagado} onChange={(e) => setMesPagado(e.target.value)} className="w-full p-2 text-sm rounded-lg border border-slate-200 bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Monto (S/)</label>
-                  <input type="number" required value={montoPago} onChange={(e) => setMontoPago(e.target.value)} className="w-full p-2 text-sm rounded-lg border border-slate-200 bg-white" />
-                </div>
+            
+            <form onSubmit={handleGuardarPago} className="bg-slate-50 p-3 rounded-xl border mb-4 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <input type="text" required placeholder="Ej. Julio 2026" value={mesPagado} onChange={e => setMesPagado(e.target.value)} className="p-2 text-xs rounded-lg border bg-white" />
+                <input type="number" required value={montoPago} onChange={e => setMontoPago(e.target.value)} className="p-2 text-xs rounded-lg border bg-white" />
               </div>
-              <button type="submit" className="w-full py-2 rounded-lg bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition-colors shadow-sm">
-                Guardar Pago
-              </button>
+              <button type="submit" className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-bold">Guardar Pago</button>
             </form>
 
-            {/* Historial de Recibos */}
-            <div>
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Historial de Pagos</h4>
-              {historialPagos.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-4 bg-slate-50 rounded-xl border border-dashed">No hay pagos registrados este año.</p>
-              ) : (
-                <div className="space-y-2">
-                  {historialPagos.map((pago) => (
-                    <div key={pago.id} className="p-3 bg-white border border-slate-100 rounded-xl shadow-xs flex justify-between items-center text-sm">
-                      <div>
-                        <p className="font-bold text-slate-800">{pago.mesPagado}</p>
-                        <p className="text-xs text-slate-400">Pago: S/ {pago.monto}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[10px] font-extrabold rounded-md uppercase tracking-wide block">
-                          SUNAT (5%)
-                        </span>
-                        <p className="font-extrabold text-slate-700 mt-0.5">S/ {pago.impuestoSunat.toFixed(2)}</p>
-                      </div>
-                    </div>
-                  ))}
+            <div className="space-y-1.5">
+              {historialPagos.map(p => (
+                <div key={p.id} className="p-2.5 bg-slate-50 rounded-xl flex justify-between text-xs items-center border">
+                  <div>
+                    <p className="font-bold">{p.mesPagado}</p>
+                    <p className="text-[10px] text-slate-400">Por: {p.inquilinoNombre}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold">S/ {p.monto}</p>
+                    <p className="text-[10px] text-red-500 font-semibold">SUNAT: S/ {p.impuestoSunat.toFixed(2)}</p>
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
           </div>
         </div>
