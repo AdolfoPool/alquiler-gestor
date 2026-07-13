@@ -1,36 +1,44 @@
 const express = require('express');
 const router = express.Router();
-const Pago = require('../models/Pago'); // Importamos nuestro modelo con la regla de negocio
+const Pago = require('../models/Pago');
 
-const listaPagos = [];
+// 1. REGISTRAR UN NUEVO PAGO Y CALCULAR EL 5% DE LA SUNAT
+router.post('/', async (req, res) => {
+  const { mesPagado, monto, idHabitacion } = req.body;
 
-// ENDPOINT: POST /api/pagos (CUS03)
-router.post('/', (req, res) => {
-  const { idAlquiler, periodo, montoRecibido } = req.body;
+  try {
+    // Cálculo automático del impuesto (5% del monto de alquiler)
+    const impuestoSunat = monto * 0.05;
 
-  // Validación básica
-  if (!idAlquiler || !periodo || !montoRecibido) {
-    return res.status(400).json({ 
-      error: "Todos los campos (idAlquiler, periodo, montoRecibido) son obligatorios." 
+    const nuevoPago = await Pago.create({
+      mesPagado,
+      monto,
+      impuestoSunat,
+      idHabitacion
     });
+
+    res.status(201).json({
+      mensaje: 'Pago registrado con éxito',
+      pago: nuevoPago
+    });
+  } catch (error) {
+    console.error('Error al registrar pago:', error);
+    res.status(500).json({ mensaje: 'Error al procesar el pago' });
   }
+});
 
-  // Instanciamos la clase Pago. 
-  // Al hacer esto, el constructor ejecuta automáticamente el cálculo del 5% de SUNAT.
-  const nuevoPago = new Pago(
-    listaPagos.length + 1, // ID simulado
-    idAlquiler,
-    periodo,
-    montoRecibido
-  );
-
-  listaPagos.push(nuevoPago);
-
-  // Devolvemos el resumen formateado usando el método de nuestra clase
-  res.status(201).json({
-    mensaje: "¡Pago registrado y procesado con éxito! 💰",
-    pago: nuevoPago.obtenerResumenPago()
-  });
+// 2. OBTENER EL HISTORIAL DE PAGOS DE UNA HABITACIÓN
+router.get('/:idHabitacion', async (req, res) => {
+  try {
+    const pagos = await Pago.findAll({
+      where: { idHabitacion: req.params.idHabitacion },
+      order: [['createdAt', 'DESC']] // El pago más reciente primero
+    });
+    res.json(pagos);
+  } catch (error) {
+    console.error('Error al obtener pagos:', error);
+    res.status(500).json({ mensaje: 'Error al obtener historial' });
+  }
 });
 
 module.exports = router;

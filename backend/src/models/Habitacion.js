@@ -1,16 +1,31 @@
-class Inquilino {
-  constructor(idInquilino, dni, nombreCompleto, celular, estadoActivo = true) {
-    this.idInquilino = idInquilino;
-    this.dni = dni; // Validado a 8 dígitos en el controlador
-    this.nombreCompleto = nombreCompleto;
-    this.celular = celular;
-    this.estadoActivo = estadoActivo; // true = actual, false = ya se retiró (historial)
-  }
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
 
-  // Método útil para cuando mostremos resúmenes en el historial o listas
-  obtenerInfoCorta() {
-    return `${this.nombreCompleto} (DNI: ${this.dni})`;
+const Habitacion = sequelize.define('Habitacion', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  numero: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true
+  },
+  precioMensual: {
+    type: DataTypes.FLOAT,
+    allowNull: false
+  },
+  piso: {
+    type: DataTypes.INTEGER, // <-- NUEVO: Para guardar 1 o 2
+    allowNull: false
+  },
+  estado: {
+    type: DataTypes.STRING,
+    defaultValue: 'Disponible' // Todos nacen Disponibles de verdad 🎉
   }
-}
+}, {
+  timestamps: true
+});
 
-module.exports = Inquilino;
+module.exports = Habitacion;

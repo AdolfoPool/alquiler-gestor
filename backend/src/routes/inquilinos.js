@@ -1,38 +1,65 @@
 const express = require('express');
 const router = express.Router();
 const Inquilino = require('../models/Inquilino');
+const Habitacion = require('../models/Habitacion');
 
-// Arreglo temporal para simular nuestra base de datos de inquilinos
-const listaInquilinos = [];
+// REGISTRAR UN NUEVO INQUILINO Y OCUPAR LA HABITACIÓN
+router.post('/', async (req, res) => {
+  const { dni, nombreCompleto, celular, idHabitacion } = req.body;
 
-// ENDPOINT: POST /api/inquilinos (CUS01)
-router.post('/', (req, res) => {
-  // Extraemos los datos que envían tus papás desde el formulario del celular
-  const { dni, nombreCompleto, celular } = req.body;
+  try {
+    // 1. Buscamos si la habitación existe y está disponible
+    const habitacion = await Habitacion.findByPk(idHabitacion);
+    if (!habitacion) {
+      return res.status(404).json({ mensaje: 'La habitación no existe' });
+    }
 
-  // Validación básica de ingeniería (Contexto Perú: DNI debe tener 8 dígitos)
-  if (!dni || dni.length !== 8) {
-    return res.status(400).json({ 
-      error: "El DNI es obligatorio y debe tener exactamente 8 dígitos." 
+    if (habitacion.estado === 'Ocupado') {
+      return res.status(400).json({ mensaje: 'Esta habitación ya está ocupada' });
+    }
+
+    // 2. Creamos el registro del inquilino en SQLite
+    const nuevoInquilino = await Inquilino.create({
+      dni,
+      nombreCompleto,
+      celular,
+      idHabitacion
     });
+
+    // 3. ¡LA CLAVE! Actualizamos el estado de la habitación a 'Ocupado'
+    habitacion.estado = 'Ocupado';
+    await habitacion.save();
+
+    res.status(201).json({
+      mensaje: 'Inquilino registrado con éxito y habitación ocupada',
+      inquilino: nuevoInquilino
+    });
+
+  } catch (error) {
+    console.error('Error al registrar inquilino:', error);
+    res.status(500).json({ mensaje: 'Error interno en el servidor' });
   }
+});
 
-  // Creamos la instancia usando nuestra clase del Modelo
-  const nuevoInquilino = new Inquilino(
-    listaInquilinos.length + 1, // ID autoincremental simulado
-    dni,
-    nombreCompleto,
-    celular
-  );
+// RUTA PARA RETIRAR UN INQUILINO Y LIBERAR LA HABITACIÓN
+router.delete('/habitacion/:idHabitacion', async (req, res) => {
+  const { idHabitacion } = req.params;
+  try {
+    // 1. Borramos al inquilino asociado a esa habitación
+    await Inquilino.destroy({ where: { idHabitacion } });
 
-  // "Guardamos" en nuestro arreglo temporal
-  listaInquilinos.push(nuevoInquilino);
+    // 2. Buscamos la habitación para cambiarle el estado a Disponible
+    const habitacion = await Habitacion.findByPk(idHabitacion);
+    if (habitacion) {
+      habitacion.estado = 'Disponible';
+      await habitacion.save();
+    }
 
-  // Respondemos al celular que todo salió bien y le devolvemos el objeto creado
-  res.status(201).json({
-    mensaje: "¡Inquilino registrado con éxito! 🎉",
-    inquilino: nuevoInquilino
-  });
+    res.json({ mensaje: 'Inquilino retirado y habitación liberada con éxito' });
+  } catch (error) {
+    console.error('Error al retirar inquilino:', error);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
 });
 
 module.exports = router;

@@ -1,31 +1,31 @@
-class Pago {
-  constructor(idPago, idAlquiler, periodo, montoRecibido, fechaRegistro = new Date()) {
-    this.idPago = idPago;
-    this.idAlquiler = idAlquiler;
-    this.periodo = periodo; // Ej: "07-2026"
-    this.montoRecibido = parseFloat(montoRecibido);
-    this.fechaRegistro = fechaRegistro;
-    
-    // Ejecutamos la regla de negocio automáticamente al instanciar el objeto
-    this.impuestoSunat = this.calcularImpuestoSunat();
-  }
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const Habitacion = require('./Habitacion');
 
-  // REGLA DE NEGOCIO (CUS04): Impuesto de Primera Categoría en Perú (5%)
-  calcularImpuestoSunat() {
-    return this.montoRecibido * 0.05;
+const Pago = sequelize.define('Pago', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  mesPagado: {
+    type: DataTypes.STRING, // Ej: "Enero 2026"
+    allowNull: false
+  },
+  monto: {
+    type: DataTypes.FLOAT,
+    allowNull: false
+  },
+  impuestoSunat: {
+    type: DataTypes.FLOAT,
+    allowNull: false // Aquí guardaremos el 5% calculado
   }
+}, {
+  timestamps: true
+});
 
-  // Método para formatear los datos antes de enviarlos a la base de datos o al frontend
-  obtenerResumenPago() {
-    return {
-      idPago: this.idPago,
-      idAlquiler: this.idAlquiler,
-      periodo: this.periodo,
-      monto: this.montoRecibido,
-      impuesto: this.impuestoSunat,
-      fecha: this.fechaRegistro.toLocaleDateString('es-PE')
-    };
-  }
-}
+// Relación: Un pago corresponde a una habitación
+Pago.belongsTo(Habitacion, { foreignKey: 'idHabitacion', onDelete: 'CASCADE' });
+Habitacion.hasMany(Pago, { foreignKey: 'idHabitacion' });
 
 module.exports = Pago;
